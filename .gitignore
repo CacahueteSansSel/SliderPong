@@ -1,0 +1,7 @@
+build.bat
+output
+cmake-build-debug
+cmake-build-debug-system
+buildtools
+build
+.idea
