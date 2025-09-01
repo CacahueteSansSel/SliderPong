@@ -65,15 +65,14 @@ Texture::Texture(const char *filename) : m_isError(false) {
             const u8 b = outOfBoundsOfImageBuffer ? 0 : ImageBuffer[(y * width + x) * 4 + 2];
             const u8 a = outOfBoundsOfImageBuffer ? 0 : ImageBuffer[(y * width + x) * 4 + 3];
 
-            if ((y * accurateSize + x) * 4 >= bufferSize)
-                return;
-
             imgDataBuffer[(y * accurateSize + x) * 4] = a;
             imgDataBuffer[(y * accurateSize + x) * 4 + 1] = b;
             imgDataBuffer[(y * accurateSize + x) * 4 + 2] = g;
             imgDataBuffer[(y * accurateSize + x) * 4 + 3] = r;
         }
     }
+
+    GSPGPU_FlushDataCache(imgDataBuffer, bufferSize);
 
     GX_DisplayTransfer(
         reinterpret_cast<u32 *>(imgDataBuffer), GX_BUFFER_DIM(accurateSize, accurateSize),
