@@ -19,10 +19,16 @@ extern void consolePrint(const char *text);
 GX_TRANSFER_RAW_COPY(0) | GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | \
 GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
-unsigned int nextPowerOfTwo(unsigned int n) {
-    unsigned int p = 1;
-    while (p < n) p <<= 1;
-    return p;
+u32 nextPowerOfTwo(u32 v) {
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+
+    return v;
 }
 
 Texture::Texture(const char *filename) : m_isError(false) {
@@ -37,10 +43,10 @@ Texture::Texture(const char *filename) : m_isError(false) {
     m_width = width;
     m_height = height;
 
-    m_img.tex = new C3D_Tex;
-    m_img.subtex = new Tex3DS_SubTexture{(u16)m_width, (u16)m_height, 0.0f, 1.0f, m_width / 512.0f, 1.0f - (m_height / 512.0f)};
-
     int accurateSize = nextPowerOfTwo(std::max(width, height));
+
+    m_img.tex = new C3D_Tex;
+    m_img.subtex = new Tex3DS_SubTexture{(u16)m_width, (u16)m_height, 0.0f, 1.0f, width / static_cast<float>(accurateSize), 1.0f - (height / static_cast<float>(accurateSize))};
 
     C3D_TexInit(m_img.tex, accurateSize, accurateSize, GPU_RGBA8);
     C3D_TexSetFilter(m_img.tex, GPU_LINEAR, GPU_LINEAR);
@@ -52,10 +58,12 @@ Texture::Texture(const char *filename) : m_isError(false) {
     memset(imgDataBuffer, 0, bufferSize);
     for (int y = 0; y < accurateSize; y++) {
         for (int x = 0; x < accurateSize; x++) {
-            const u8 r = ImageBuffer[(y * width + x) * 4];
-            const u8 g = ImageBuffer[(y * width + x) * 4 + 1];
-            const u8 b = ImageBuffer[(y * width + x) * 4 + 2];
-            const u8 a = ImageBuffer[(y * width + x) * 4 + 3];
+            bool outOfBoundsOfImageBuffer = (x >= width || y >= height);
+
+            const u8 r = outOfBoundsOfImageBuffer ? 0 : ImageBuffer[(y * width + x) * 4];
+            const u8 g = outOfBoundsOfImageBuffer ? 0 : ImageBuffer[(y * width + x) * 4 + 1];
+            const u8 b = outOfBoundsOfImageBuffer ? 0 : ImageBuffer[(y * width + x) * 4 + 2];
+            const u8 a = outOfBoundsOfImageBuffer ? 0 : ImageBuffer[(y * width + x) * 4 + 3];
 
             if ((y * accurateSize + x) * 4 >= bufferSize)
                 return;
