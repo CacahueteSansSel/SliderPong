@@ -15,8 +15,15 @@
 
 extern void consolePrint(const char *text);
 
-// Code taken and edited from Universal Updater (filename source/utils/screenshot.cpp)
-// https://github.com/Universal-Team/Universal-Updater
+#define TRANSFER_FLAGS (GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | \
+GX_TRANSFER_RAW_COPY(0) | GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | \
+GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
+
+unsigned int nextPowerOfTwo(unsigned int n) {
+    unsigned int p = 1;
+    while (p < n) p <<= 1;
+    return p;
+}
 
 Texture::Texture(const char *filename) : m_isError(false) {
     std::vector<u8> ImageBuffer;
@@ -33,26 +40,41 @@ Texture::Texture(const char *filename) : m_isError(false) {
     m_img.tex = new C3D_Tex;
     m_img.subtex = new Tex3DS_SubTexture{(u16)m_width, (u16)m_height, 0.0f, 1.0f, m_width / 512.0f, 1.0f - (m_height / 512.0f)};
 
-    int accurateSize = 512;
+    int accurateSize = nextPowerOfTwo(std::max(width, height));
 
     C3D_TexInit(m_img.tex, accurateSize, accurateSize, GPU_RGBA8);
     C3D_TexSetFilter(m_img.tex, GPU_LINEAR, GPU_LINEAR);
     m_img.tex->border = 0;
     C3D_TexSetWrap(m_img.tex, GPU_CLAMP_TO_BORDER, GPU_CLAMP_TO_BORDER);
 
-    for (u32 x = 0; x < m_width && x < accurateSize; x++) {
-        for (u32 y = 0; y < m_height && y < accurateSize; y++) {
-            const u32 dstPos = ((((y >> 3) * (accurateSize >> 3) + (x >> 3)) << 6) +
-                                ((x & 1) | ((y & 1) << 1) | ((x & 2) << 1) | ((y & 2) << 2) |
-                                 ((x & 4) << 2) | ((y & 4) << 3))) * 4;
+    long bufferSize = accurateSize * accurateSize * 4;
+    u8* imgDataBuffer = static_cast<u8 *>(linearAlloc(bufferSize));
+    memset(imgDataBuffer, 0, bufferSize);
+    for (int y = 0; y < accurateSize; y++) {
+        for (int x = 0; x < accurateSize; x++) {
+            const u8 r = ImageBuffer[(y * width + x) * 4];
+            const u8 g = ImageBuffer[(y * width + x) * 4 + 1];
+            const u8 b = ImageBuffer[(y * width + x) * 4 + 2];
+            const u8 a = ImageBuffer[(y * width + x) * 4 + 3];
 
-            const u32 srcPos = (y * m_width + x) * 4;
-            ((uint8_t *)m_img.tex->data)[dstPos + 0] = ImageBuffer.data()[srcPos + 3];
-            ((uint8_t *)m_img.tex->data)[dstPos + 1] = ImageBuffer.data()[srcPos + 2];
-            ((uint8_t *)m_img.tex->data)[dstPos + 2] = ImageBuffer.data()[srcPos + 1];
-            ((uint8_t *)m_img.tex->data)[dstPos + 3] = ImageBuffer.data()[srcPos + 0];
+            if ((y * accurateSize + x) * 4 >= bufferSize)
+                return;
+
+            imgDataBuffer[(y * accurateSize + x) * 4] = a;
+            imgDataBuffer[(y * accurateSize + x) * 4 + 1] = b;
+            imgDataBuffer[(y * accurateSize + x) * 4 + 2] = g;
+            imgDataBuffer[(y * accurateSize + x) * 4 + 3] = r;
         }
     }
+
+    GX_DisplayTransfer(
+        reinterpret_cast<u32 *>(imgDataBuffer), GX_BUFFER_DIM(accurateSize, accurateSize),
+        static_cast<u32 *>(m_img.tex->data), GX_BUFFER_DIM(accurateSize, accurateSize),
+        TRANSFER_FLAGS
+    );
+    gspWaitForPPF();
+
+    linearFree(imgDataBuffer);
 
     ImageBuffer.clear();
 }
